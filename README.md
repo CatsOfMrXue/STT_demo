@@ -17,3 +17,7 @@ python app.py
 ```
 
 Visit `http://localhost:5001` in your browser. The interface now includes a microphone button so you can record audio directly in the page, or upload an existing file. Provide your API key, optionally override the base URL, choose a model, and submit the audio to receive a transcription.
+
+### Streaming option
+
+Enable the **Stream transcription while recording** switch to send audio chunks to the server as they are captured. The server calls OpenAI's `audio.transcriptions.with_streaming_response.create` so the transcript area updates in near real time while you speak.

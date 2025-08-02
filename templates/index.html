@@ -37,6 +37,10 @@
     <button id="recordBtn" class="btn btn-secondary">Start Recording</button>
     <button id="stopBtn" class="btn btn-secondary d-none">Stop Recording</button>
     <canvas id="waveform" class="w-100 border mt-3 d-none" height="100"></canvas>
+    <div class="form-check form-switch mt-3">
+      <input class="form-check-input" type="checkbox" id="streamingChk">
+      <label class="form-check-label" for="streamingChk">Stream transcription while recording</label>
+    </div>
   </div>
   <audio id="audioPlayback" class="d-none" controls></audio>
   <textarea id="resultText" class="form-control mt-3" rows="10" readonly></textarea>
@@ -52,24 +56,50 @@
   const form = document.getElementById('uploadForm');
   const canvas = document.getElementById('waveform');
   const canvasCtx = canvas.getContext('2d');
-  let audioCtx, analyser, dataArray, bufferLength, animationId;
+  const streamingChk = document.getElementById('streamingChk');
+  let audioCtx, analyser, dataArray, bufferLength, animationId, isStreaming;
 
   recordBtn.onclick = async () => {
     audioChunks = [];
+    isStreaming = streamingChk.checked;
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-      const blob = new Blob(audioChunks, { type: 'audio/webm' });
-      playback.src = URL.createObjectURL(blob);
+    mediaRecorder.ondataavailable = async e => {
+      if (e.data.size > 0) {
+        audioChunks.push(e.data);
+          if (isStreaming) {
+            const fd = new FormData(form);
+            fd.set('audio', e.data, 'chunk.webm');
+            try {
+              const resp = await fetch('/transcribe?stream=1', { method: 'POST', body: fd });
+              const reader = resp.body.getReader();
+              const decoder = new TextDecoder();
+              while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const text = decoder.decode(value, { stream: true });
+                result.value += text;
+                result.scrollTop = result.scrollHeight;
+              }
+            } catch (err) {
+              console.error(err);
+            }
+          }
+        }
+      };
+      mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        playback.src = URL.createObjectURL(blob);
       playback.classList.remove('d-none');
-      const fd = new FormData(form);
-      fd.set('audio', blob, 'recording.webm');
-      const resp = await fetch('/transcribe', { method: 'POST', body: fd });
-      const data = await resp.json();
-      result.value += (result.value ? "\n" : "") + (data.text || resp.statusText);
-      result.scrollTop = result.scrollHeight;
-    };
+      if (!isStreaming) {
+        const fd = new FormData(form);
+        fd.set('audio', blob, 'recording.webm');
+          const resp = await fetch('/transcribe', { method: 'POST', body: fd });
+          const data = await resp.json();
+          result.value += (result.value ? "\n" : "") + (data.text || resp.statusText);
+          result.scrollTop = result.scrollHeight;
+        }
+      };
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     const source = audioCtx.createMediaStreamSource(stream);
     analyser = audioCtx.createAnalyser();
@@ -103,7 +133,7 @@
       canvasCtx.stroke();
     };
     draw();
-    mediaRecorder.start();
+    mediaRecorder.start(isStreaming ? 1000 : undefined);
     recordBtn.classList.add('d-none');
     stopBtn.classList.remove('d-none');
   };
