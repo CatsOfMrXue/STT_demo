@@ -36,9 +36,10 @@
   <div class="mb-3">
     <button id="recordBtn" class="btn btn-secondary">Start Recording</button>
     <button id="stopBtn" class="btn btn-secondary d-none">Stop Recording</button>
+    <canvas id="waveform" class="w-100 border mt-3 d-none" height="100"></canvas>
   </div>
   <audio id="audioPlayback" class="d-none" controls></audio>
-  <pre id="resultText" class="mt-3"></pre>
+  <textarea id="resultText" class="form-control mt-3" rows="10" readonly></textarea>
 </div>
 
 <script>
@@ -49,6 +50,9 @@
   const playback = document.getElementById('audioPlayback');
   const result = document.getElementById('resultText');
   const form = document.getElementById('uploadForm');
+  const canvas = document.getElementById('waveform');
+  const canvasCtx = canvas.getContext('2d');
+  let audioCtx, analyser, dataArray, bufferLength, animationId;
 
   recordBtn.onclick = async () => {
     audioChunks = [];
@@ -63,8 +67,42 @@
       fd.set('audio', blob, 'recording.webm');
       const resp = await fetch('/transcribe', { method: 'POST', body: fd });
       const data = await resp.json();
-      result.textContent = data.text || resp.statusText;
+      result.value += (result.value ? "\n" : "") + (data.text || resp.statusText);
+      result.scrollTop = result.scrollHeight;
     };
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const source = audioCtx.createMediaStreamSource(stream);
+    analyser = audioCtx.createAnalyser();
+    source.connect(analyser);
+    analyser.fftSize = 2048;
+    bufferLength = analyser.fftSize;
+    dataArray = new Uint8Array(bufferLength);
+    canvas.width = canvas.offsetWidth;
+    canvas.classList.remove('d-none');
+    const draw = () => {
+      animationId = requestAnimationFrame(draw);
+      analyser.getByteTimeDomainData(dataArray);
+      canvasCtx.fillStyle = '#f8f9fa';
+      canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+      canvasCtx.lineWidth = 2;
+      canvasCtx.strokeStyle = '#0d6efd';
+      canvasCtx.beginPath();
+      const sliceWidth = canvas.width / bufferLength;
+      let x = 0;
+      for (let i = 0; i < bufferLength; i++) {
+        const v = dataArray[i] / 128.0;
+        const y = v * canvas.height / 2;
+        if (i === 0) {
+          canvasCtx.moveTo(x, y);
+        } else {
+          canvasCtx.lineTo(x, y);
+        }
+        x += sliceWidth;
+      }
+      canvasCtx.lineTo(canvas.width, canvas.height / 2);
+      canvasCtx.stroke();
+    };
+    draw();
     mediaRecorder.start();
     recordBtn.classList.add('d-none');
     stopBtn.classList.remove('d-none');
@@ -72,6 +110,9 @@
 
   stopBtn.onclick = () => {
     mediaRecorder.stop();
+    audioCtx && audioCtx.close();
+    cancelAnimationFrame(animationId);
+    canvas.classList.add('d-none');
     recordBtn.classList.remove('d-none');
     stopBtn.classList.add('d-none');
   };
