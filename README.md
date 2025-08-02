@@ -16,4 +16,4 @@ pip install -r requirements.txt
 python app.py
 ```
 
-Visit `http://localhost:5000` in your browser. Provide your API key, optionally override the base URL, choose a model, and upload an audio file to receive a transcription.
+Visit `http://localhost:5001` in your browser. The interface now includes a microphone button so you can record audio directly in the page, or upload an existing file. Provide your API key, optionally override the base URL, choose a model, and submit the audio to receive a transcription.
